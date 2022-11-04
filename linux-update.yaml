@@ -1,0 +1,49 @@
+---
+- name: Update Linux
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Show Package Manager
+      ansible.builtin.debug:
+        var: ansible_facts.pkg_mgr
+
+    - name: Update Cache - APT
+      when: ansible_facts.pkg_mgr == "apt"
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Check Updates - APT
+      when: ansible_facts.pkg_mgr == "apt"
+      ansible.builtin.shell: "aptitude search '~U' || echo 'no_updates'"
+      register: result_updates_apt
+
+    - name: Check Updates - DNF
+      when: ansible_facts.pkg_mgr == "dnf"
+      ansible.builtin.dnf:
+        update_cache: true
+        list: upgrades
+      register: result_updates_dnf
+
+    - name: Show Updates - APT
+      when: (ansible_facts.pkg_mgr == "apt") and (result_updates_apt is defined) and (result_updates_apt.stdout != "no_updates")
+      ansible.builtin.debug:
+        msg: "{{ result_updates_apt.stdout }}"
+
+    - name: Show Updates - DNF
+      when: (ansible_facts.pkg_mgr == "dnf") and (result_updates_dnf is defined) and (result_updates_dnf.results | length > 0)
+      ansible.builtin.debug:
+        msg: "{{ result_updates_dnf.results | map(attribute='name') }}" # | list }}"
+
+    - name: Install Updates - APT
+      when: (ansible_facts.pkg_mgr == "apt") and (update_allowed is defined) and (update_allowed)
+      ansible.builtin.apt:
+        upgrade: safe
+
+    - name: Install Updates - DNF
+      when: (ansible_facts.pkg_mgr == "dnf") and (update_allowed is defined) and (update_allowed)
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_only: true
