@@ -10,13 +10,17 @@
 
     - name: Update Cache - APT
       when: ansible_facts.pkg_mgr == "apt"
+      changed_when: false
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
 
     - name: Check Updates - APT
       when: ansible_facts.pkg_mgr == "apt"
-      ansible.builtin.shell: "aptitude search '~U' || echo 'no_updates'"
+      changed_when: false
+      ansible.builtin.shell: set -euxo pipefail && apt list --upgradable 2>/dev/null | tail --lines=+2
+      args:
+        executable: /bin/bash
       register: result_updates_apt
 
     - name: Check Updates - DNF
@@ -27,9 +31,10 @@
       register: result_updates_dnf
 
     - name: Show Updates - APT
-      when: (ansible_facts.pkg_mgr == "apt") and (result_updates_apt is defined) and (result_updates_apt.stdout != "no_updates")
+      when: (ansible_facts.pkg_mgr == "apt") and (result_updates_apt is defined) and (result_updates_apt.stdout | length > 0)
+      changed_when: false
       ansible.builtin.debug:
-        msg: "{{ result_updates_apt.stdout }}"
+        msg: "{{ result_updates_apt.stdout_lines }}"
 
     - name: Show Updates - DNF
       when: (ansible_facts.pkg_mgr == "dnf") and (result_updates_dnf is defined) and (result_updates_dnf.results | length > 0)
@@ -39,7 +44,21 @@
     - name: Install Updates - APT
       when: (ansible_facts.pkg_mgr == "apt") and (update_allowed is defined) and (update_allowed)
       ansible.builtin.apt:
+        force_apt_get: true ## use apt-get to follow Ubuntu's phased updates policy (default - false)
         upgrade: safe
+      register: result_updated_apt
+
+    - name: Show Updated - APT - stdout
+      when: (ansible_facts.pkg_mgr == "apt") and (update_allowed is defined) and (update_allowed)
+      changed_when: false
+      ansible.builtin.debug:
+        msg: "{{ result_updated_apt.stdout_lines }}"
+
+    - name: Show Updated - APT - stderr
+      when: (ansible_facts.pkg_mgr == "apt") and (update_allowed is defined) and (update_allowed)
+      changed_when: false
+      ansible.builtin.debug:
+        msg: "{{ result_updated_apt.stderr_lines }}"
 
     - name: Install Updates - DNF
       when: (ansible_facts.pkg_mgr == "dnf") and (update_allowed is defined) and (update_allowed)
