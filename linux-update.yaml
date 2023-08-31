@@ -8,61 +8,69 @@
       ansible.builtin.debug:
         var: ansible_facts.pkg_mgr
 
-    - name: Update Cache - APT
+    - name: APT Tasks
       when: ansible_facts.pkg_mgr == "apt"
-      changed_when: false
-      ansible.builtin.apt:
-        update_cache: true
-        cache_valid_time: 3600
+      block:
+        - name: Update Cache - APT
+          changed_when: false
+          ansible.builtin.apt:
+            update_cache: true
+            cache_valid_time: 3600
 
-    - name: Check Updates - APT
-      when: ansible_facts.pkg_mgr == "apt"
-      changed_when: false
-      ansible.builtin.shell: set -euxo pipefail && apt list --upgradable 2>/dev/null | tail --lines=+2
-      args:
-        executable: /bin/bash
-      register: result_updates_apt
+        - name: Check Updates - APT
+          changed_when: false
+          ansible.builtin.shell: set -euxo pipefail && apt list --upgradable 2>/dev/null | tail --lines=+2
+          args:
+            executable: /bin/bash
+          register: result_updates_apt
 
-    - name: Check Updates - DNF
-      when: ansible_facts.pkg_mgr == "dnf"
-      ansible.builtin.dnf:
-        update_cache: true
-        list: upgrades
-      register: result_updates_dnf
+        - name: Show Updates - APT
+          when: (result_updates_apt is defined) and (result_updates_apt.stdout | length > 0)
+          changed_when: false
+          ansible.builtin.debug:
+            msg: "{{ result_updates_apt.stdout_lines }}"
 
-    - name: Show Updates - APT
-      when: (ansible_facts.pkg_mgr == "apt") and (result_updates_apt is defined) and (result_updates_apt.stdout | length > 0)
-      changed_when: false
-      ansible.builtin.debug:
-        msg: "{{ result_updates_apt.stdout_lines }}"
+        - name: Install Updates - APT
+          when: (update_allowed is defined) and (update_allowed)
+          ansible.builtin.apt:
+            force_apt_get: true ## use apt-get to follow Ubuntu's phased updates policy (default - false)
+            upgrade: safe
+          register: result_updated_apt
 
-    - name: Show Updates - DNF
-      when: (ansible_facts.pkg_mgr == "dnf") and (result_updates_dnf is defined) and (result_updates_dnf.results | length > 0)
-      ansible.builtin.debug:
-        msg: "{{ result_updates_dnf.results | map(attribute='name') }}" # | list }}"
+        - name: Show Updated - APT - stdout
+          when: (update_allowed is defined) and (update_allowed)
+          changed_when: false
+          ansible.builtin.debug:
+            msg: "{{ result_updated_apt.stdout_lines }}"
 
-    - name: Install Updates - APT
-      when: (ansible_facts.pkg_mgr == "apt") and (update_allowed is defined) and (update_allowed)
-      ansible.builtin.apt:
-        force_apt_get: true ## use apt-get to follow Ubuntu's phased updates policy (default - false)
-        upgrade: safe
-      register: result_updated_apt
+        - name: Show Updated - APT - stderr
+          when: (update_allowed is defined) and (update_allowed)
+          changed_when: false
+          ansible.builtin.debug:
+            msg: "{{ result_updated_apt.stderr_lines }}"
 
-    - name: Show Updated - APT - stdout
-      when: (ansible_facts.pkg_mgr == "apt") and (update_allowed is defined) and (update_allowed)
-      changed_when: false
-      ansible.builtin.debug:
-        msg: "{{ result_updated_apt.stdout_lines }}"
+    - name: DNF Tasks
+      when: (ansible_facts.pkg_mgr == "dnf") or (ansible_facts.pkg_mgr == "yum")
+      block:
+        - name: Install DNF
+          ansible.builtin.package:
+            name: dnf
+          when: ansible_facts.pkg_mgr == "yum"
 
-    - name: Show Updated - APT - stderr
-      when: (ansible_facts.pkg_mgr == "apt") and (update_allowed is defined) and (update_allowed)
-      changed_when: false
-      ansible.builtin.debug:
-        msg: "{{ result_updated_apt.stderr_lines }}"
+        - name: Check Updates - DNF
+          ansible.builtin.dnf:
+            update_cache: true
+            list: upgrades
+          register: result_updates_dnf
 
-    - name: Install Updates - DNF
-      when: (ansible_facts.pkg_mgr == "dnf") and (update_allowed is defined) and (update_allowed)
-      ansible.builtin.dnf:
-        name: "*"
-        state: latest
-        update_only: true
+        - name: Show Updates - DNF
+          when: (result_updates_dnf is defined) and (result_updates_dnf.results | length > 0)
+          ansible.builtin.debug:
+            msg: "{{ result_updates_dnf.results | map(attribute='name') }}" # | list }}"
+
+        - name: Install Updates - DNF
+          when: (update_allowed is defined) and (update_allowed)
+          ansible.builtin.dnf:
+            name: "*"
+            state: latest
+            update_only: true
