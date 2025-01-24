@@ -49,6 +49,11 @@
           ansible.builtin.debug:
             msg: "{{ result_updated_apt.stderr_lines }}"
 
+      rescue:
+        - name: Rescue block
+          ansible.builtin.debug:
+            msg: block failed
+
     - name: DNF Tasks
       when: (ansible_facts.pkg_mgr == "dnf") or (ansible_facts.pkg_mgr == "yum")
       block:
@@ -74,3 +79,8 @@
             name: "*"
             state: latest
             update_only: true
+
+      rescue:
+        - name: Rescue block
+          ansible.builtin.debug:
+            msg: block failed
